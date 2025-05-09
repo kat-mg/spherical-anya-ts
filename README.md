@@ -1,5 +1,5 @@
 # spherical-anya-ts
-Spherical Anya in TypeScript (based on Spherical Polyanya)
+Spherical Anya in TypeScript (based on Spherical Polyanya and Anya code)
 
 Map format is going to be:
 1st line: `type octile`

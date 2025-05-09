@@ -66,7 +66,7 @@ export class SearchInstance {
                 } // Whenever the state changes, we update the right endpoint
             }
         }
-    } // Compute the intervals
+    } // Compute the left and right endpoints
 
     getInitialNodes() {
         // Get the index of the start point given its lat/lon
@@ -122,4 +122,9 @@ export class SearchInstance {
         // TO DO: Generate search nodes to the left and right
 
     }
+
+    addSuccessor(source: SearchNode, successor: SearchNode) {
+        // Check if the successor is already in the open list
+    }
+
 }

@@ -17,7 +17,7 @@ export class Grid {
 
     points: Point[][] = [];     // 2D array of points (used for HValue computation)
     tiles: boolean[][] = [];    // 2D array that indicatees what is and isn't an obstacle; true = blocked, false = traversable
-    latLongIndex: Map<LatLong, Index> = new Map(); // Map of lat-long coordinates to their index in the grid
+    latLongIndex: Map<LatLong, Index> = new Map(); // Map of the set lat/long coordinates to the index of the point in the grid
     width: number = 0;          // Width = number of columns
     height: number = 0;         // Height = number of rows
 
@@ -46,27 +46,22 @@ export class Grid {
         this.tiles = new Array(width * height).fill(true);
 
         // Convert the rest of the lines to points
-        for (let i = 0; i < height; i++) {
-            for (let j = 0; j < width; j++) {
+        for (let i = 0; i < height + 1; i++) {
+            for (let j = 0; j < width + 1; j++) {
                 const line = (await mapReader.next()).value;
-                const point = new Point(
-                    minLat + (maxLat - minLat) * (i / height),
-                    minLon + (maxLon - minLon) * (j / width),
-                ); // COMPUTATION SUBJECT TO CHANGE TO DO !!
-                
+
                 assert(
                     line === '0' || line === '1',
                     `Invalid line character: expected 0 or 1 but got '${line}'`,
                 );
 
-                if (line === '1') {
-                    this.tiles[i][j] = true; //  0 = valid, 1 = obstacle
-                }
-                else {
-                    this.tiles[i][j] = false; // 0 = valid, 1 = obstacle
-                }
+                // Get the point coordinates; size is points[height+1][width+1]
+                const point = this.arrayIndexToPoint(i, j);
 
-                this.points[i][j] = point; // Store the point in the 2D array
+                // Get the tile traversability; size is tiles[height][width] (0 = traversable, 1 = blocked)
+                if (i < height && j < width) {
+                    this.tiles[i][j] = line === '1' ? true : false;
+                }
 
                 // Store the point in the map TO DO: check for epsilon constant
                 const latLong: LatLong = { lat: point.lat, long: point.lon };
@@ -74,6 +69,12 @@ export class Grid {
                 this.latLongIndex.set(latLong, index);
             }
         }
+    }
+
+    arrayIndexToPoint(i: number, j: number): Point {
+        const lat = (j / this.width) * 2 * maxLat - maxLat;
+        const long = maxLon - (i / this.height) * 2 * maxLon;
+        return new Point(lat, long);
     }
 
     findIndex(lat: number, long: number): Index | undefined {

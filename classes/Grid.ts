@@ -1,23 +1,14 @@
 import { assert } from "@std/assert/assert";
 import { readlines } from "../utils.ts";
 import { Point } from './Point.ts';
-import { minLat, maxLat, minLon, maxLon } from "../constants.ts";
-
-interface LatLong {
-    lat: number;
-    long: number;
-}
-
-interface Index {
-    i: number;  // row
-    j: number;  // column
-}
+import { MAX_DECIMAL_PLACES, minLat, maxLat, minLon, maxLon } from "../constants.ts";
+import { Index, PointLocationType, PointLocation } from "../types.ts";
 
 export class Grid {
 
     points!: Point[][];     // 2D array of points (used for HValue computation)
     tiles!: boolean[][];    // 2D array that indicatees what is and isn't an obstacle; true = blocked, false = traversable
-    latLongIndex: Map<LatLong, Index> = new Map(); // Map of the set lat/long coordinates to the index of the point in the grid
+    latLongIndex: Map<string, Index> = new Map(); // Map of the set lat/long coordinates to the index of the point in the grid
     width: number = 0;          // Width = number of columns
     height: number = 0;         // Height = number of rows
 
@@ -79,45 +70,210 @@ export class Grid {
                 this.points[i][j] = point;
 
 
-                // Store the point in the map TO DO: check for epsilon constant
-                const latLong: LatLong = { lat: point.lat, long: point.lon };
+                // Store the point in the map TODO: check for epsilon constant
                 const index: Index = { i, j };
-                this.latLongIndex.set(latLong, index);
+                const latLongKey = this.latLongToString(point._lat, point._lon);
+                this.latLongIndex.set(latLongKey, index);
             }
         }
     }
 
+    latLongToString(lat: number, lon: number): string {
+        return `${lat.toFixed(MAX_DECIMAL_PLACES)},${lon.toFixed(MAX_DECIMAL_PLACES)}`;
+    }
+
     arrayIndexToPoint(i: number, j: number): Point {
-        const lat = (j / this.width) * 2 * maxLat - maxLat;
-        const long = maxLon - (i / this.height) * 2 * maxLon;
+        const lat = parseFloat(((j / this.width) * 2 * maxLat - maxLat).toFixed(MAX_DECIMAL_PLACES));
+        const long = parseFloat((maxLon - (i / this.height) * 2 * maxLon).toFixed(MAX_DECIMAL_PLACES));
         return new Point(lat, long);
     }
 
     findIndex(lat: number, long: number): Index | undefined {
-        const latLong: LatLong = { lat, long };
-        return this.latLongIndex.get(latLong);
-    } // Find the index of a point given its lat/lon (TO DO: epsilon constant check)
+        const latLongKey = this.latLongToString(lat, long);
+        return this.latLongIndex.get(latLongKey);
+    } // Find the index of a point given its lat/lon (TODO: epsilon constant check)
+
+    onlyLatInGrid(point: Point) {
+        for (const key of this.latLongIndex.keys()) {
+            const [lat, lon] = key.split(',').map(Number);
+            if (lat === point.lat && lon !== point.lon) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    onlyLonInGrid(point: Point) {
+        for (const key of this.latLongIndex.keys()) {
+            const [lat, lon] = key.split(',').map(Number);
+            if (lat !== point.lat && lon === point.lon) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    findClosestPoint(point: Point): Index | undefined {
+        // Find the closest point in the grid to the given point
+        let closestPoint: Index | undefined;
+        let minDistance = Infinity;
+
+        for (let i = 0; i < this.height + 1; i++) {
+            for (let j = 0; j < this.width + 1; j++) {
+                const distance = this.points[i][j].distance(point);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestPoint = { i, j };
+                }
+            }
+        }
+
+        return closestPoint;
+    }
+
+    getPointLocation(point: Point) : PointLocation {
+        assert(
+            point.lat >= minLat && point.lat <= maxLat && point.lon >= minLon && point.lon <= maxLon,
+            `Point out of bounds: ${point.toString()}`,
+        );
+
+        const pointArrIndex = this.findIndex(point.lat, point.lon);
+
+        if (pointArrIndex === undefined) {
+            const closestPoint = this.findClosestPoint(point);
+            
+            assert(
+                closestPoint !== undefined,
+                `No closest point found for point: ${point.toString()}`,
+            );
+
+            if (this.onlyLatInGrid(point)) {
+                return {
+                    type: PointLocationType.ON_VERTICAL_EDGE,
+                    tileIndex: -1,
+                    closestPoint: this.points[closestPoint.i][closestPoint.j],
+                };
+            } // Point is in a vertical edge (but not in grid.points)
+            else if (this.onlyLonInGrid(point)) {
+                return {
+                    type: PointLocationType.ON_HORIZONTAL_EDGE,
+                    tileIndex: -1,
+                    closestPoint: this.points[closestPoint.i][closestPoint.j],
+                };
+            } // Point is in a horizontal edge (but not in grid.points)
+            else {
+                return {
+                    type: PointLocationType.INSIDE_TILE,
+                    tileIndex: closestPoint,
+                    closestPoint: this.points[closestPoint.i][closestPoint.j],
+                };
+            }
+        }  // Point is not in the grid (find the closest point)
+        else {
+            let [i, j] = [pointArrIndex.i, pointArrIndex.j];
+
+            // Check if the point is at the edge end of the grid
+            if (i === this.height) {
+                i = this.height - 1;
+            }
+            if (j === this.width) {
+                j = this.width - 1;
+            }
+
+            // Check if the point is a corner point
+            const bottomLeftOfBlocked = this.bottomLeftOfBlocked(i, j);
+            const bottomRightOfBlocked = this.bottomRightOfBlocked(i, j);
+            const topLeftOfBlocked = this.topLeftOfBlocked(i, j);
+            const topRightOfBlocked = this.topRightOfBlocked(i, j);
+            const blockedTrue = [bottomLeftOfBlocked, bottomRightOfBlocked, topLeftOfBlocked, topRightOfBlocked];
+            //console.log(`blockedTrue: ${blockedTrue}`);
+
+            if (bottomLeftOfBlocked || bottomRightOfBlocked || topLeftOfBlocked || topRightOfBlocked) {
+                if ((bottomLeftOfBlocked && topRightOfBlocked) || (bottomRightOfBlocked && topLeftOfBlocked)) {
+                    const tilesIndices: Index[] = [];
+                    if (bottomLeftOfBlocked) {
+                        //console.log("bottomLeftOfBlocked");
+                        tilesIndices.push({ i: i - 1, j });
+                        tilesIndices.push({ i , j: j - 1 });
+                    } else {
+                        //console.log("bottomRightOfBlocked");
+                        tilesIndices.push({ i: i - 1, j: j - 1 });
+                        tilesIndices.push({ i , j });
+                    }
+                    return {
+                        type: PointLocationType.ON_AMBIG_CORNER,
+                        tileIndex: tilesIndices,
+                        closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
+                    };
+                }
+                else if (blockedTrue.length === 1) {
+                    // Find whic one is true in blockedResults
+                    let thisTileIndex: Index = { i: -1, j: -1 };
+                    switch (blockedTrue[0]) {
+                        case bottomLeftOfBlocked:
+                            thisTileIndex = { i: i - 1, j };
+                            break;
+                        case bottomRightOfBlocked:
+                            thisTileIndex = { i: i - 1, j: j - 1 };
+                            break;
+                        case topLeftOfBlocked:
+                            thisTileIndex = { i, j };
+                            break;
+                        case topRightOfBlocked:
+                            thisTileIndex = { i, j: j - 1 };
+                            break;
+                        default:
+                            console.error("Error: no blocked tile found");
+                            break;
+                    } // Find the index of the blocked tile
+
+                    return {
+                        type: PointLocationType.ON_UNAMBIG_CORNER,
+                        tileIndex: thisTileIndex,     // This tile is the blocked tile that the point is a corner point to (which ever one is blocked) TODO
+                        closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
+                    };
+                }
+
+                return {
+                    type: PointLocationType.ON_GRID_NON_CORNER,
+                    tileIndex: -1,
+                    closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
+                };
+            } else {
+                return {
+                    type: PointLocationType.ON_GRID_NON_CORNER,
+                    tileIndex: -1,
+                    closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
+                };
+            }
+        } // Point is in the grid (check if it is a corner point)
+
+    }
 
     isBlocked(i: number, j: number): boolean {
-        if (i < 0 || j < 0 || i >= this.width || j >= this.height) return true; // out of bounds
+        if (i < 0 || j < 0 || j >= this.width || i >= this.height) return true; // out of bounds
         return this.tiles[i][j]; // true (1) is blocked, false (0) is traversable
     }
 
     // If current tile is locked to the bottom/top left/right of a blocked tile
     bottomLeftOfBlocked (i: number, j: number): boolean {
-        return this.isBlocked(i+1,j-1);
-    }
+        //console.log(`bottomLeftOfBlocked(${i-1}, ${j})`);
+        return this.isBlocked(i-1,j);
+    } // Look at the top right tile
 
     bottomRightOfBlocked (i: number, j: number): boolean {
-        return this.isBlocked(i+1,j+1);
-    }
+        //console.log(`bottomRightOfBlocked(${i-1}, ${j-1})`);
+        return this.isBlocked(i-1,j-1);
+    } // look at the top left tile
 
     topLeftOfBlocked (i: number, j: number): boolean {
-        return this.isBlocked(i-1,j-1);
-    }
+        //console.log(`topLeftOfBlocked(${i}, ${j})`);
+        return this.isBlocked(i,j);
+    } // look at the bottoom right tile
 
     topRightOfBlocked (i: number, j: number): boolean {
-        return this.isBlocked(i-1,j+1);
-    }
+        //console.log(`topRightOfBlocked(${i}, ${j-1})`);
+        return this.isBlocked(i,j-1);
+    } // look at the bottom left tile
 
 }

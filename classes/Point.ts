@@ -56,6 +56,14 @@ export class Point {
         return false;
     }
 
+    equalLat(other: Point): boolean {
+        return Math.abs(this.lat - other.lat) < EPSILON;
+    }
+
+    equalLon(other: Point): boolean {
+        return Math.abs(this.lon - other.lon) < EPSILON;
+    }
+
     // Distance between two points
     cosDistance(other: Point): number {
         const lat1 = this.lat * TO_RAD;
@@ -194,6 +202,6 @@ export class Point {
     }
 
     toString(): string {
-        return `Point(${String(this._lat.toFixed(5))}, ${String(this._lon.toFixed(5))})`;
+        return `(${String(this._lat)}, ${String(this._lon)})`;
     }
 }

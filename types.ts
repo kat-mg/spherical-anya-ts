@@ -12,6 +12,7 @@ export enum PointLocationType {
     ON_HORIZONTAL_EDGE,     //3
     ON_VERTICAL_EDGE,       //4
     INSIDE_TILE,            //5
+    INVALID,                //6
 }
 
 export interface PointLocation {

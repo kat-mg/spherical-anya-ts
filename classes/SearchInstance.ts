@@ -33,9 +33,28 @@ export class SearchInstance {
     -> generatePath
     */
 
-    calcInitialIntervals() {
+    getHValue(root: Point, right: Point, left: Point): number {
+        if (root.equal(right) || root.equal(left)) {
+            return root.distance(this.end);
+        }
+
+        const rightDistance = root.distance(right);
+        const leftDistance = root.distance(left);
+        const rightToEnd = right.distance(this.end);
+        const leftToEnd = left.distance(this.end);
+
+        return Math.min(
+            rightDistance + rightToEnd,
+            leftDistance + leftToEnd,
+        );
+    } // TODO : check if this is correct
+
+    genInitialNodes() {
         let leftEnd = -1;
         let rightEnd = -1;
+
+        const startLoc = this.grid.getPointLocation(this.start);
+        const closestPoint = startLoc.closestPoint;
     }
 
 }

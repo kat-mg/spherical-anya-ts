@@ -132,10 +132,13 @@ export class Grid {
     }
 
     getPointLocation(point: Point) : PointLocation {
-        assert(
-            point.lat >= minLat && point.lat <= maxLat && point.lon >= minLon && point.lon <= maxLon,
-            `Point out of bounds: ${point.toString()}`,
-        );
+        if (point.lat < minLat || point.lat > maxLat || point.lon < minLon || point.lon > maxLon) {
+            return {
+                type: PointLocationType.INVALID,
+                tileIndex: -1,
+                closestPoint: point,
+            }
+        }
 
         const pointArrIndex = this.findIndex(point.lat, point.lon);
 
@@ -145,7 +148,7 @@ export class Grid {
             assert(
                 closestPoint !== undefined,
                 `No closest point found for point: ${point.toString()}`,
-            );
+            ); // idk how this can happen (here just in case)
 
             if (this.onlyLatInGrid(point)) {
                 return {
@@ -162,12 +165,25 @@ export class Grid {
                 };
             } // Point is in a horizontal edge (but not in grid.points)
             else {
+                if (closestPoint.i === this.height) {
+                    closestPoint.i = this.height - 1;
+                }
+                if (closestPoint.j === this.width) {
+                    closestPoint.j = this.width - 1;
+                }
+                if (this.tiles[closestPoint.i][closestPoint.j]) {
+                    return {
+                        type: PointLocationType.INVALID,
+                        tileIndex: closestPoint,
+                        closestPoint: this.points[closestPoint.i][closestPoint.j],
+                    };
+                } // the tile the point is inside of is blocked
                 return {
                     type: PointLocationType.INSIDE_TILE,
                     tileIndex: closestPoint,
                     closestPoint: this.points[closestPoint.i][closestPoint.j],
-                };
-            }
+                }; // Point is inside a traversable tile
+            } // Point is inside a tile
         }  // Point is not in the grid (find the closest point)
         else {
             let [i, j] = [pointArrIndex.i, pointArrIndex.j];
@@ -185,8 +201,16 @@ export class Grid {
             const bottomRightOfBlocked = this.bottomRightOfBlocked(i, j);
             const topLeftOfBlocked = this.topLeftOfBlocked(i, j);
             const topRightOfBlocked = this.topRightOfBlocked(i, j);
-            const blockedTrue = [bottomLeftOfBlocked, bottomRightOfBlocked, topLeftOfBlocked, topRightOfBlocked];
-            //console.log(`blockedTrue: ${blockedTrue}`);
+            const blockedRes = [bottomLeftOfBlocked, bottomRightOfBlocked, topLeftOfBlocked, topRightOfBlocked];
+            const blockedTrue = blockedRes.filter(Boolean);
+
+            if (blockedTrue.length === 4) {
+                return {
+                    type: PointLocationType.INVALID,
+                    tileIndex: -1,
+                    closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
+                }; // the tile the point is surrounded by blocked tiles
+            }
 
             if (bottomLeftOfBlocked || bottomRightOfBlocked || topLeftOfBlocked || topRightOfBlocked) {
                 if ((bottomLeftOfBlocked && topRightOfBlocked) || (bottomRightOfBlocked && topLeftOfBlocked)) {

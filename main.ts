@@ -42,11 +42,13 @@ function getPointLocTests(grid: Grid, points: Point[]) {
 }
 
 /* getPointLocation tests */
-const point1 = new Point(-72, 128.57143);
-const point2 = new Point(-81, 180);
-const point3 = new Point(-54, 100);
-const point4 = new Point(62, -140.1231);
-const point5 = new Point(72, 25.71429);
-const points = [point1, point2, point3, point4, point5];
+const point1 = new Point(-72, 128.57143);   // Point on a ON_GRID_NON_CORNER
+const point2 = new Point(-81, 180);         // Point on an ON_HORIZONTAL_EDGE
+const point3 = new Point(-54, 100);         // Point on an ON_VERTICAL_EDGE
+const point4 = new Point(62, -140.1231);    // Point inside a tile that's INVALID
+const point5 = new Point(61, -40.4322);     // Point inside a tile that's VALID
+const point6 = new Point(72, 25.71429);     // Point on ON_AMBIG_CORNER
+const point7 = new Point(-18, 25.71429);     // Point on ON_UNAMBIG_CORNER
+const points = [point1, point2, point3, point4, point5, point6, point7];
 
 getPointLocTests(grid, points);

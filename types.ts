@@ -17,6 +17,8 @@ export enum PointLocationType {
 
 export interface PointLocation {
     type: PointLocationType;
-    tileIndex: Index[] | Index | -1;  // -1 if not a corner point or in a tile
+    tileIndex: Index[] | -1;
     closestPoint: Point;
-}
+} 
+// index[] is the array of blocked tiles associated with the point; 
+// -1 if invalid tile

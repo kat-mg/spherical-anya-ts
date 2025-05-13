@@ -1,7 +1,7 @@
 import { assert } from "@std/assert/assert";
 import { readlines } from "../utils.ts";
 import { Point } from './Point.ts';
-import { MAX_DECIMAL_PLACES, minLat, maxLat, minLon, maxLon } from "../constants.ts";
+import { EPSILON, MAX_DECIMAL_PLACES, minLat, maxLat, minLon, maxLon } from "../constants.ts";
 import { Index, PointLocationType, PointLocation } from "../types.ts";
 
 export class Grid {
@@ -93,24 +93,24 @@ export class Grid {
         return this.latLongIndex.get(latLongKey);
     } // Find the index of a point given its lat/lon (TODO: epsilon constant check)
 
-    onlyLatInGrid(point: Point) {
+    onlyLatInGrid(point: Point): number | undefined {
         for (const key of this.latLongIndex.keys()) {
             const [lat, lon] = key.split(',').map(Number);
             if (lat === point.lat && lon !== point.lon) {
-                return true;
+                return lat;
             }
         }
-        return false;
+        return undefined;
     }
 
-    onlyLonInGrid(point: Point) {
+    onlyLonInGrid(point: Point): number | undefined {
         for (const key of this.latLongIndex.keys()) {
             const [lat, lon] = key.split(',').map(Number);
             if (lat !== point.lat && lon === point.lon) {
-                return true;
+                return lon;
             }
         }
-        return false;
+        return undefined;
     }
 
     findClosestPoint(point: Point): Index | undefined {
@@ -131,6 +131,22 @@ export class Grid {
         return closestPoint;
     }
 
+    isClosestPLeft(point: Point, closestP: Point): number {
+        if ( Math.abs(point.lat - closestP.lat) < EPSILON) {
+            return 0;
+        }
+
+        return point.lat < closestP.lat ? -1 : 1;
+    } // Returns 0 if same column, negative if left, positive if right
+    
+    isClosestPBelow(point: Point, closestP: Point): number {
+        if ( Math.abs(point.lon - closestP.lon) < EPSILON) {
+            return 0;
+        }
+
+        return point.lon < closestP.lon ? -1 : 1;
+    } // Returns 0 if same row, negative if below, positive if above
+
     getPointLocation(point: Point) : PointLocation {
         if (point.lat < minLat || point.lat > maxLat || point.lon < minLon || point.lon > maxLon) {
             return {
@@ -143,58 +159,81 @@ export class Grid {
         const pointArrIndex = this.findIndex(point.lat, point.lon);
 
         if (pointArrIndex === undefined) {
-            const closestPoint = this.findClosestPoint(point);
+            const closestPointIndex = this.findClosestPoint(point);
             
             assert(
-                closestPoint !== undefined,
+                closestPointIndex !== undefined,
                 `No closest point found for point: ${point.toString()}`,
             ); // idk how this can happen (here just in case)
 
-            if (this.onlyLatInGrid(point)) {
+            let [i, j] = [closestPointIndex.i, closestPointIndex.j];
+
+            if (this.isClosestPBelow(point, this.points[closestPointIndex.i][closestPointIndex.j]) < 0) {
+                [i, j] = [closestPointIndex.i - 1, closestPointIndex.j];
+            } // This tile index has the correct i (row) to check; if =0 or =1 then the closest is at the same or above 
+            if (this.isClosestPLeft(point, this.points[closestPointIndex.i][closestPointIndex.j]) < 0) {
+                [i, j] = [closestPointIndex.i, closestPointIndex.j - 1];
+            } // This tile index has the correct j (column) to check; if =0 or =1 then the closest is at the same or left
+
+
+            // Check if the point is at the edge end of the grid (TODO: CHANGE AFTER CONFIRMATION THAT TILES WRAP AROUND)
+            //if (i === this.height || j === this.width) [i, j] = [this.adjustIndexAtLast(i, j).i, this.adjustIndexAtLast(i, j).j];
+            let thisTileIndex = [{i, j}];
+
+            const onlyLat = this.onlyLatInGrid(point);
+            const onlyLon = this.onlyLonInGrid(point);
+
+            if (onlyLat !== undefined) {
+                if (this.isBlocked(thisTileIndex[0].i, thisTileIndex[0].j - 1)) {
+                    thisTileIndex = [{i: thisTileIndex[0].i, j: thisTileIndex[0].j - 1}];
+                } // Check if the tile to the left of the point is blocked
+                else if (!this.isBlocked(thisTileIndex[0].i, thisTileIndex[0].j)) {
+                    thisTileIndex = []
+                } // Goes here if left and right are traversable
+
                 return {
                     type: PointLocationType.ON_VERTICAL_EDGE,
-                    tileIndex: -1,
-                    closestPoint: this.points[closestPoint.i][closestPoint.j],
+                    tileIndex: thisTileIndex,
+                    closestPoint: this.points[closestPointIndex.i][closestPointIndex.j],
                 };
             } // Point is in a vertical edge (but not in grid.points)
-            else if (this.onlyLonInGrid(point)) {
+
+            else if (onlyLon !== undefined) {
+                if (this.isBlocked(thisTileIndex[0].i-1, thisTileIndex[0].j)) {
+                    thisTileIndex = [{i: thisTileIndex[0].i-1, j: thisTileIndex[0].j}];
+                } // Check if the tile on top of the point is blocked
+                else if (!this.isBlocked(thisTileIndex[0].i, thisTileIndex[0].j)) {
+                    thisTileIndex = []
+                } // Goes here if top and bottom are traversable
                 return {
                     type: PointLocationType.ON_HORIZONTAL_EDGE,
-                    tileIndex: -1,
-                    closestPoint: this.points[closestPoint.i][closestPoint.j],
+                    tileIndex: thisTileIndex,
+                    closestPoint: this.points[closestPointIndex.i][closestPointIndex.j],
                 };
             } // Point is in a horizontal edge (but not in grid.points)
+            
             else {
-                if (closestPoint.i === this.height) {
-                    closestPoint.i = this.height - 1;
-                }
-                if (closestPoint.j === this.width) {
-                    closestPoint.j = this.width - 1;
-                }
-                if (this.tiles[closestPoint.i][closestPoint.j]) {
+                if (this.tiles[closestPointIndex.i][closestPointIndex.j]) {
                     return {
                         type: PointLocationType.INVALID,
-                        tileIndex: closestPoint,
-                        closestPoint: this.points[closestPoint.i][closestPoint.j],
+                        tileIndex: -1,
+                        closestPoint: this.points[closestPointIndex.i][closestPointIndex.j],
                     };
                 } // the tile the point is inside of is blocked
                 return {
                     type: PointLocationType.INSIDE_TILE,
-                    tileIndex: closestPoint,
-                    closestPoint: this.points[closestPoint.i][closestPoint.j],
+                    tileIndex: [],
+                    closestPoint: this.points[closestPointIndex.i][closestPointIndex.j],
                 }; // Point is inside a traversable tile
             } // Point is inside a tile
+
         }  // Point is not in the grid (find the closest point)
+
         else {
             let [i, j] = [pointArrIndex.i, pointArrIndex.j];
 
-            // Check if the point is at the edge end of the grid
-            if (i === this.height) {
-                i = this.height - 1;
-            }
-            if (j === this.width) {
-                j = this.width - 1;
-            }
+            // Check if the point is at the edge end of the grid (TODO: CHANGE AFTER CONFIRMATION THAT TILES WRAP AROUND)
+            //if (i === this.height || j === this.width) [i, j] = [this.adjustIndexAtLast(i, j).i, this.adjustIndexAtLast(i, j).j];
 
             // Check if the point is a corner point
             const bottomLeftOfBlocked = this.bottomLeftOfBlocked(i, j);
@@ -213,14 +252,13 @@ export class Grid {
             }
 
             if (bottomLeftOfBlocked || bottomRightOfBlocked || topLeftOfBlocked || topRightOfBlocked) {
-                if ((bottomLeftOfBlocked && topRightOfBlocked) || (bottomRightOfBlocked && topLeftOfBlocked)) {
+                if ((bottomLeftOfBlocked && topRightOfBlocked && !bottomRightOfBlocked && !topLeftOfBlocked) || 
+                    (bottomRightOfBlocked && topLeftOfBlocked && !bottomLeftOfBlocked && !topRightOfBlocked)) {
                     const tilesIndices: Index[] = [];
                     if (bottomLeftOfBlocked) {
-                        //console.log("bottomLeftOfBlocked");
                         tilesIndices.push({ i: i - 1, j });
                         tilesIndices.push({ i , j: j - 1 });
                     } else {
-                        //console.log("bottomRightOfBlocked");
                         tilesIndices.push({ i: i - 1, j: j - 1 });
                         tilesIndices.push({ i , j });
                     }
@@ -229,9 +267,9 @@ export class Grid {
                         tileIndex: tilesIndices,
                         closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
                     };
-                }
+                } // Point is on an ambiguous corner (2 tiles are blocked)
                 else if (blockedTrue.length === 1) {
-                    // Find whic one is true in blockedResults
+                    // Find which one is true in blockedResults
                     let thisTileIndex: Index = { i: -1, j: -1 };
                     switch (blockedTrue[0]) {
                         case bottomLeftOfBlocked:
@@ -253,26 +291,76 @@ export class Grid {
 
                     return {
                         type: PointLocationType.ON_UNAMBIG_CORNER,
-                        tileIndex: thisTileIndex,     // This tile is the blocked tile that the point is a corner point to (which ever one is blocked) TODO
+                        tileIndex: [thisTileIndex],     // This tile is the blocked tile that the point is a corner point to (which ever one is blocked)
                         closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
                     };
-                }
+                } // Point is on a corner point (1 tile is blocked)
+                else if (blockedTrue.length === 3) {
+                    // Find the only one that is false in blockedResults
+                    const tileIndices: Index[] = [];
+                    const unblockedTile = blockedRes.indexOf(false);
+                    switch (unblockedTile) {
+                        case 0: // bottom left of unblocked (push the other 3)
+                            tileIndices.push({ i: i - 1, j: j - 1 }); // bottom right
+                            tileIndices.push({ i, j }); // top left
+                            tileIndices.push({ i, j: j - 1 }); // top right
+                            break;
+                        case 1: // bottom right of unblocked
+                            tileIndices.push({ i: i - 1, j }); // bottom left
+                            tileIndices.push({ i, j }); // top left
+                            tileIndices.push({ i, j: j - 1 }); // top right
+                            break;
+                        case 2: // top left of unblocked
+                            tileIndices.push({ i: i - 1, j }); // bottom left
+                            tileIndices.push({ i: i - 1, j: j - 1 }); // bottom right
+                            tileIndices.push({ i, j: j - 1 }); // top right
+                            break;
+                        case 3: // top right of unblocked
+                            tileIndices.push({ i: i - 1, j }); // bottom left
+                            tileIndices.push({ i: i - 1, j: j - 1 }); // bottom right
+                            tileIndices.push({ i, j }); // top left
+                            break;
+                        default:
+                            console.error("Error: no unblocked tile found how are you here??");
+                            break;
+                    }
 
+                    return {
+                        type: PointLocationType.ON_UNAMBIG_CORNER,
+                        tileIndex: tileIndices,     // These tiles are the blocked tiles that the point is a corner point to (which ever one is blocked)
+                        closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
+                    };
+
+                } // Point is on a corner point (3 tiles are blocked)
+
+                console.log("may blocked somewhere", blockedRes);
                 return {
                     type: PointLocationType.ON_GRID_NON_CORNER,
-                    tileIndex: -1,
+                    tileIndex: [], // no tile index if ON_GRID_NON_CORNER
                     closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
                 };
             } else {
+                console.log("walang blocked");
                 return {
                     type: PointLocationType.ON_GRID_NON_CORNER,
-                    tileIndex: -1,
+                    tileIndex: [], // no tile index if ON_GRID_NON_CORNER
                     closestPoint: this.points[pointArrIndex.i][pointArrIndex.j],
                 };
             }
         } // Point is in the grid (check if it is a corner point)
 
     }
+
+    adjustIndexAtLast(i: number, j: number): Index {
+        const index: Index = { i, j };
+        if (i === this.points[i].length) {
+            index.i = this.height - 1;
+        }
+        if (j === this.height) {
+            index.j = this.width - 1;
+        }
+        return index;
+    } // Adjust the index of the point to be within the grid
 
     isBlocked(i: number, j: number): boolean {
         if (i < 0 || j < 0 || j >= this.width || i >= this.height) return true; // out of bounds

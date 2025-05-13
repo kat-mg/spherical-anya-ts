@@ -23,6 +23,8 @@ for (let i = 0; i < grid.height + 1; i++) {
     stringifiedPoints.push(thisPointLine);
 }
 
+console.log("Grid points: ", stringifiedPoints);
+
 for (let i = 0; i < grid.height; i++) {
     console.log(stringifiedPoints[i]);
     console.log(JSON.stringify(grid.tiles[i]));
@@ -49,6 +51,7 @@ const point4 = new Point(62, -140.1231);    // Point inside a tile that's INVALI
 const point5 = new Point(61, -40.4322);     // Point inside a tile that's VALID
 const point6 = new Point(72, 25.71429);     // Point on ON_AMBIG_CORNER
 const point7 = new Point(-18, 25.71429);     // Point on ON_UNAMBIG_CORNER
-const points = [point1, point2, point3, point4, point5, point6, point7];
+const point8 = new Point(90, 128.57143);     // Point on the right most of the grid (not actually sure if this is a corner or not)
+const points = [point1, point2, point3, point4, point5, point6, point7, point8];
 
 getPointLocTests(grid, points);

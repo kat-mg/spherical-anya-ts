@@ -3,6 +3,7 @@ import { Grid } from "./Grid.ts";
 import { Point } from "./Point.ts";
 import { PriorityQueue } from "./PriorityQueue.ts";
 import { SearchNode } from "./SearchNode.ts";
+import { EPSILON } from "../constants.ts";
 
 export class SearchInstance {
     grid: Grid;
@@ -55,6 +56,37 @@ export class SearchInstance {
 
         const startLoc = this.grid.getPointLocation(this.start);
         const closestPoint = startLoc.closestPoint;
-    }
+        const closestPointIndex = this.grid.findIndex(
+            closestPoint._lat,
+            closestPoint._lon,
+        );
 
+        assert(
+            closestPointIndex,
+            `Closest point index not found for point: ${closestPoint}`,
+        ) // Should never happen
+
+        // Check if the closest point is above (res < 0), below (res > 0), or on the same row (res = 0) as the start point
+        const closestPLevel = this.grid.isClosestPBelow(this.start, closestPoint); 
+
+        const currRow = this.grid.tiles[closestPointIndex.i];
+
+        for (let j = closestPointIndex.j; j < currRow.length; j++) {
+            const currentPoint = this.grid.points[closestPointIndex.i][j];
+            const currentPointLoc = this.grid.getPointLocation(currentPoint);
+            if (currentPointLoc.type === 0) {
+                rightEnd = j;
+                break;
+            }
+        } // Traverse the row to find the RIGHT end
+
+        for (let j = closestPointIndex.j; j >= 0; j--) {
+            const currentPoint = this.grid.points[closestPointIndex.i][j];
+            const currentPointLoc = this.grid.getPointLocation(currentPoint);
+            if (currentPointLoc.type === 0) {
+                leftEnd = j;
+                break;
+            }
+        } // Traverse the row to find the LEFT end
+    }
 }
